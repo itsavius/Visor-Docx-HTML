@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Word Document Viewer v1</title>
+  
+  <script src="DocxHtml2Canvas/jszip.min.js"></script>
+  <script src="DocxHtml2Canvas/docx-preview.min.js"></script>
+  <style>
+    /* ── Reset & base ─────────────────────────────────────── */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #0f1016;
+      background-attachment: fixed;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #e0e0e0;
+      overflow: hidden;
+    }
+
+    /* ── Control bar ──────────────────────────────────────── */
+    #control-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      height: 56px;
+      flex-shrink: 0;
+      /* 1. Transparencia */
+      /* Usamos un color ligeramente blanco/gris con opacidad */
+      background: rgba(255, 255, 255, 0.15);
+
+      /* 2. Desenfoque (La propiedad clave) */
+      /* desenfoca los elementos DETRÁS de este div */
+      backdrop-filter: blur(10px) saturate(180%);
+      /* Prefijo de compatibilidad */
+      -webkit-backdrop-filter: blur(10px) saturate(180%);
+
+      /* 3. Borde sutil (Para darle un toque de brillo) */
+
+
+      /* 4. Sombra (Para darle profundidad y simular que flota) */
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+
+      border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+
+      gap: 16px;
+    }
+
+    /* Filename – centred in the main bar */
+    #file-name {
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: #e0e0f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 70vw;
+      text-align: center;
+    }
+
+    /* ── Secondary bar (control-bar2) ──────────────────────── */
+    #control-bar2 {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 36px;
+      padding: 0 20px;
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(10px) saturate(160%);
+      -webkit-backdrop-filter: blur(10px) saturate(160%);
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Navigation group (right side) */
+    #nav-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-left: auto;
+    }
+
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 8px;
+      background: rgb(235 235 235 / 29%);
+      color: #d4d5d5;
+      font-size: 1.1rem;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+      outline: none;
+    }
+
+    .nav-btn:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.35);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
+      transform: scale(1.08);
+    }
+
+    .nav-btn:active:not(:disabled) {
+      transform: scale(0.95);
+    }
+
+    .nav-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    #btn-print {
+      background: rgba(100, 160, 255, 0.15);
+      color: #64a0ff;
+    }
+
+    #btn-print:hover {
+      background: rgba(255, 255, 255, 0.35);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
+    }
+
+    #btn-download {
+      background: rgba(72, 199, 142, 0.15);
+      color: #48c78e;
+    }
+
+    #btn-download:hover {
+      background: rgba(255, 255, 255, 0.35);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
+    }
+
+    #btn-prev {
+      background: rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+    }
+
+    #btn-prev:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.35);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
+    }
+
+    #btn-next {
+      background: rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+    }
+
+    #btn-next:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.35);
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
+    }
+
+    @media print {
+      body {
+        overflow: visible;
+        background: #fff;
+      }
+
+      #control-bar {
+        display: none;
+      }
+
+      #doc-frame {
+        margin: 0;
+        overflow: visible;
+        background: transparent;
+        box-shadow: none;
+        border-radius: 0;
+      }
+
+      #doc-frame .docx {
+        display: block !important;
+        page-break-after: always;
+        transform: none !important;
+        margin-bottom: 0 !important;
+      }
+    }
+
+    #page-display {
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: #c9c9c9;
+      white-space: nowrap;
+      min-width: 80px;
+      text-align: center;
+    }
+
+    /* ── Viewer area (doc-frame + vertical scrollbar) ───────── */
+    #viewer-area {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: row;
+      overflow: hidden;
+      margin: 1%;
+      gap: 8px;
+    }
+
+    /* ── Document frame ───────────────────────────────────── */
+    #doc-frame {
+      flex: 1 1 auto;
+      background: rgba(255, 255, 255, 0.05);
+      /* acrylic translucent */
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-top: 1px solid rgba(255, 255, 255, 0.25);
+      border-left: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 12px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 16px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    #doc-frame::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    #doc-frame::-webkit-scrollbar-track {
+      background: transparent;
+      border-radius: 4px;
+    }
+
+    #doc-frame::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+    }
+
+    /* ── Page wrappers produced by docx-preview ──────────── */
+    /*  docx-preview wraps each page in an <article class="docx"> */
+    #doc-frame .docx {
+      display: none;
+      /* hide all pages by default  */
+      width: 100% !important;
+      max-width: 900px;
+      background: #ffffff;
+      border-radius: 6px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+      /* scale the page to fit the frame height */
+      transform-origin: top center;
+    }
+
+    #doc-frame .docx.active-page {
+      display: block;
+      /* show only the active page  */
+    }
+
+    /* ── Loading / error states ──────────────────────────── */
+    #status-msg {
+      margin: auto;
+      font-size: 1rem;
+      color: #fff;
+      text-align: center;
+      opacity: 0.8;
+    }
+
+    /* ── Vertical page-nav scrollbar ─────────────────────── */
+    #page-scrollbar {
+      flex-shrink: 0;
+      width: 14px;
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-top: 1px solid rgba(255, 255, 255, 0.25);
+      border-left: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      cursor: pointer;
+      position: relative;
+      user-select: none;
+    }
+
+    #page-scrollbar-thumb {
+      position: absolute;
+      left: 2px;
+      right: 2px;
+      border-radius: 5px;
+      background: #d5d5d5;
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+      transition: background 0.15s, box-shadow 0.15s;
+      cursor: grab;
+      min-height: 20px;
+    }
+
+    #page-scrollbar-thumb:active {
+      cursor: grabbing;
+      background: #ffffff;
+      box-shadow: 0 0 14px rgba(255, 255, 255, 0.8);
+    }
+
+    /* Page tick marks */
+    .page-tick {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.15);
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Control bar -->
+  <div id="control-bar">
+    <div id="nav-group">
+
+      <button class="nav-btn" id="btn-download" title="Download document">&#128229;</button>
+      <button class="nav-btn" id="btn-print" title="Print document">&#128438;</button>
+      <span id="page-display">— / —</span>
+      <button class="nav-btn" id="btn-prev" title="Previous page" disabled>&#8249;</button>
+      <button class="nav-btn" id="btn-next" title="Next page" disabled>&#8250;</button>
+    </div>
+  </div>
+
+  <!-- Viewer area: doc-frame + vertical page scrollbar -->
+  <div id="viewer-area">
+    <div id="doc-frame">
+      <p id="status-msg">Loading document…</p>
+    </div>
+    <div id="page-scrollbar" title="Drag to navigate pages">
+      <div id="page-scrollbar-thumb"></div>
+    </div>
+  </div>
+  <!-- Secondary bar -->
+  <div id="control-bar2">
+    <span id="file-name">Loading…</span>
+  </div>
+
+  <script>
+    /* ═══════════════════════════════════════════════════════
+       Configuration – change only this value to switch file
+       ═══════════════════════════════════════════════════════ */
+    const FILENAME = 'Ejemplo.docx';
+
+    /* ── State ────────────────────────────────────────────── */
+    let pages = [];   // NodeList of .docx article elements
+    let currentPage = 0;   // 0-based index
+
+    /* ── DOM refs ─────────────────────────────────────────── */
+    const docFrame = document.getElementById('doc-frame');
+    const fileNameEl = document.getElementById('file-name');
+    const pageDisplay = document.getElementById('page-display');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
+    const statusMsg = document.getElementById('status-msg');
+    const pageScroll = document.getElementById('page-scrollbar');
+    const pageThumb = document.getElementById('page-scrollbar-thumb');
+
+    /* ── Navigation ───────────────────────────────────────── */
+    function showPage(index) {
+      if (!pages.length) return;
+      pages[currentPage].classList.remove('active-page');
+      currentPage = Math.max(0, Math.min(index, pages.length - 1));
+      pages[currentPage].classList.add('active-page');
+      docFrame.scrollTop = 0;         // scroll back to top on page change
+
+      pageDisplay.textContent = `Page ${currentPage + 1} / ${pages.length}`;
+      btnPrev.disabled = currentPage === 0;
+      btnNext.disabled = currentPage === pages.length - 1;
+
+      fitPageToFrame();
+      syncScrollbar();
+    }
+
+    /* ── Vertical page scrollbar ──────────────────────────── */
+    function syncScrollbar() {
+      if (!pages.length) return;
+      const trackH = pageScroll.clientHeight;
+      const thumbH = Math.max(20, trackH / pages.length);
+      const travel = trackH - thumbH;
+      const top = pages.length > 1 ? (currentPage / (pages.length - 1)) * travel : 0;
+      pageThumb.style.height = thumbH + 'px';
+      pageThumb.style.top = top + 'px';
+    }
+
+    function buildScrollbarTicks() {
+      // Remove old ticks
+      pageScroll.querySelectorAll('.page-tick').forEach(t => t.remove());
+      if (pages.length < 2) return;
+      for (let i = 1; i < pages.length; i++) {
+        const tick = document.createElement('div');
+        tick.className = 'page-tick';
+        tick.style.top = `${(i / pages.length) * 100}%`;
+        pageScroll.appendChild(tick);
+      }
+    }
+
+    // Click on track → jump to that page
+    pageScroll.addEventListener('click', (e) => {
+      if (e.target === pageThumb) return; // handled by drag
+      const rect = pageScroll.getBoundingClientRect();
+      const ratio = (e.clientY - rect.top) / rect.height;
+      showPage(Math.round(ratio * (pages.length - 1)));
+    });
+
+    // Drag thumb
+    pageThumb.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      pageThumb.setPointerCapture(e.pointerId);
+      const startY = e.clientY;
+      const trackH = pageScroll.clientHeight;
+      const thumbH = pageThumb.offsetHeight;
+      const travel = trackH - thumbH;
+      const startPage = currentPage;
+
+      function onMove(ev) {
+        const delta = ev.clientY - startY;
+        const ratio = pages.length > 1 ? delta / travel : 0;
+        const target = Math.round(startPage + ratio * (pages.length - 1));
+        if (target !== currentPage) showPage(target);
+      }
+
+      pageThumb.addEventListener('pointermove', onMove);
+      pageThumb.addEventListener('pointerup', () => {
+        pageThumb.removeEventListener('pointermove', onMove);
+      }, { once: true });
+    });
+
+    // Mouse-wheel on the scrollbar
+    pageScroll.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      showPage(currentPage + (e.deltaY > 0 ? 1 : -1));
+    }, { passive: false });
+
+    btnPrev.addEventListener('click', () => showPage(currentPage - 1));
+    btnNext.addEventListener('click', () => showPage(currentPage + 1));
+    document.getElementById('btn-print').addEventListener('click', () => window.print());
+    document.getElementById('btn-download').addEventListener('click', () => {
+      const a = document.createElement('a');
+      a.href = FILENAME;
+      a.download = FILENAME;
+      a.click();
+    });
+
+    /* Keyboard navigation */
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') showPage(currentPage + 1);
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') showPage(currentPage - 1);
+    });
+
+    /* ── Fit page to frame height ─────────────────────────── */
+    function fitPageToFrame() {
+      if (!pages.length) return;
+      const page = pages[currentPage];
+      // reset scale first to measure natural size
+      page.style.transform = '';
+      const frameH = docFrame.clientHeight - 32;   // 16px padding × 2
+      const pageH = page.offsetHeight || page.scrollHeight || 1;
+      const scaleH = frameH / pageH;
+      // never zoom beyond 1, only shrink to fit
+      const scale = Math.min(1, scaleH);
+      page.style.transform = `scale(${scale})`;
+      // compensate for the space removed by shrinking
+      page.style.marginBottom = `${(pageH * scale) - pageH}px`;
+    }
+
+    window.addEventListener('resize', fitPageToFrame);
+
+    /* ── Load & render the DOCX ───────────────────────────── */
+    async function loadDocument() {
+      fileNameEl.textContent = FILENAME;
+
+      try {
+        const response = await fetch(FILENAME);
+        if (!response.ok) throw new Error(`HTTP ${response.status} – ${response.statusText}`);
+        const arrayBuffer = await response.arrayBuffer();
+
+        // Remove the loading message
+        statusMsg.remove();
+
+        // docx-preview options
+        const options = {
+          className: 'docx',
+          inWrapper: false,    // we manage the container ourselves
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          breakPages: true,     // render each page separately
+          ignoreLastRenderedPageBreak: false,
+          experimental: true,
+          trimXmlDeclaration: true,
+          useBase64URL: true,
+        };
+
+        await docx.renderAsync(arrayBuffer, docFrame, null, options);
+
+        // After rendering, collect all page elements
+        pages = Array.from(docFrame.querySelectorAll('.docx'));
+
+        if (!pages.length) {
+          docFrame.innerHTML = '<p id="status-msg">No pages found in the document.</p>';
+          return;
+        }
+
+        // Build scrollbar ticks then show first page
+        buildScrollbarTicks();
+        showPage(0);
+
+      } catch (err) {
+        statusMsg.textContent = `⚠ Could not load "${FILENAME}": ${err.message}`;
+        console.error(err);
+        pageDisplay.textContent = '— / —';
+      }
+    }
+
+    loadDocument();
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, viewport-fit=cover" />
+	<title>Word Document Viewer v4</title>
+	
+    <!-- Local dependencies -->
+    <script src="DocxHtml2Canvas/jszip.min.js"></script>
+    <script src="DocxHtml2Canvas/docx-preview.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-color: #f8f9fa;
+        }
+
+        #document-container {
+            flex-grow: 1;
+            overflow: auto;
+            width: 100%;
+            height: 100%;
+        }
+
+        @media print {
+            body, #document-container {
+                overflow: visible !important;
+                height: auto !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="document-container"></div>
+
+    <script>
+        let currentDocument = null;
+        const docxOptions = Object.assign(docx.defaultOptions, {
+            debug: true,
+            experimental: true,
+            hideWrapperOnPrint: true,
+        });
+
+        const container = document.querySelector("#document-container");
+
+        async function renderDocx(file) {
+            currentDocument = file; 
+
+            if (!currentDocument) return;
+            
+            // render document
+            let res = await docx.renderAsync(currentDocument, container, null, docxOptions)
+            console.log(res);
+        }
+        
+        container.addEventListener("dragover", ev => ev.preventDefault());
+        container.addEventListener("drop", ev => {
+            ev.preventDefault();
+            renderDocx(ev.dataTransfer.files[0]);
+        });
+
+        // Load Ejemplo.docx by default
+        async function tryLoadDefault() {
+            try {
+                let resp = await fetch('Ejemplo.docx');
+                if (resp.ok) {
+                    const blob = await resp.blob();
+                    renderDocx(blob);
+                } else {
+                    console.warn("Failed to fetch Ejemplo.docx - ensure it is in the same directory.");
+                }
+            } catch (e) {
+                console.error("Error loading Ejemplo.docx:", e);
+            }
+        }
+
+        tryLoadDefault();
+    </script>
+</body>
+</html>
